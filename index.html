@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tipsy Party</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Nunito', sans-serif;
+      background: linear-gradient(135deg, #f5f0ff 0%, #fff0f5 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    section { display: none; }
+    section.active { display: block; }
+
+    /* ── Setup ─────────────────────────────────────────────────── */
+    #setup-section {
+      max-width: 440px;
+      margin: 60px auto 0;
+      background: #fff;
+      border-radius: 20px;
+      padding: 36px;
+      box-shadow: 0 4px 32px rgba(123,31,162,0.14);
+    }
+    #setup-section h1 {
+      font-family: 'Fredoka One', cursive;
+      font-size: 2.8rem;
+      text-align: center;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, #e53935, #7B1FA2);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    #setup-section p { font-size: 1.05rem; font-weight: 700; color: #666; margin-bottom: 12px; }
+    #player-list { list-style: none; }
+    #player-list li { display: flex; gap: 8px; margin: 6px 0; }
+    #player-list input {
+      flex: 1; padding: 9px 12px; font-size: 1rem;
+      font-family: 'Nunito', sans-serif;
+      border: 2px solid #e0e0e0; border-radius: 8px; outline: none;
+      transition: border-color 0.2s;
+    }
+    #player-list input:focus { border-color: #7B1FA2; }
+    button {
+      cursor: pointer; border: none; border-radius: 8px;
+      font-family: 'Nunito', sans-serif; font-weight: 700;
+      transition: transform 0.1s, box-shadow 0.1s;
+    }
+    button:active { transform: scale(0.97); }
+    #btn-add-player { background: #f3e5f5; color: #7B1FA2; padding: 9px 16px; font-size: 0.95rem; margin-top: 6px; }
+    #btn-start {
+      background: linear-gradient(135deg, #43a047, #1b5e20);
+      color: #fff; font-size: 1.1rem; width: 100%;
+      margin-top: 16px; padding: 14px;
+      box-shadow: 0 4px 14px rgba(67,160,71,0.35);
+    }
+
+    /* ── Game layout: landscape two-column ─────────────────────── */
+    #game-section.active {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 24px;
+      align-items: start;
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+
+    /* ── Board ─────────────────────────────────────────────────── */
+    #board-wrap {
+      background: #fff;
+      border-radius: 14px;
+      padding: 10px;
+      box-shadow: 0 4px 24px rgba(123,31,162,0.15);
+      border: 3px solid #ce93d8;
+      overflow: auto;
+      flex-shrink: 0;
+      max-height: calc(100vh - 40px);   /* scrolls vertically; follows the active player */
+      position: sticky;
+      top: 20px;
+    }
+    #board-grid {
+      display: grid;
+      grid-template-columns: repeat(10, 96px);
+      grid-template-rows: repeat(8, 96px);
+      gap: 3px;
+      width: fit-content;
+    }
+    .cell {
+      border-radius: 7px;
+      padding: 6px 7px;
+      min-height: 96px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      background: #fafafa;
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,0.07);
+      transition: transform 0.15s;
+      cursor: default;
+    }
+    .cell:hover { transform: scale(1.08); z-index: 10; }
+    .cell-id   { font-size: 10px; font-weight: 700; color: rgba(0,0,0,0.28); line-height: 1; }
+    .cell-text {
+      font-size: 13px; font-weight: 600; line-height: 1.22; color: #333;
+      overflow-wrap: anywhere; hyphens: auto;
+      flex: 1; margin-top: 3px;
+    }
+    .cell-tokens { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 2px; }
+    .token {
+      width: 22px; height: 22px; border-radius: 50%;
+      font-size: 8px; font-weight: 800; color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.3); flex-shrink: 0;
+    }
+    .cell-normal  { background: linear-gradient(135deg, #fff 60%, #f7f0ff); }
+    .cell-start   { background: linear-gradient(135deg, #b9f6ca, #69f0ae); border: 2px solid #00c853; }
+    .cell-finish  { background: linear-gradient(135deg, #fff9c4, #ffd740); border: 2px solid #ffab00; }
+    .cell-card-a  { background: linear-gradient(135deg, #fce4ec, #f48fb1); }
+    .cell-card-b  { background: linear-gradient(135deg, #f3e5f5, #ce93d8); }
+    .cell-move    { background: linear-gradient(135deg, #e3f2fd, #81d4fa); }
+    .cell-active  { outline: 3px solid #FF6F00; outline-offset: -1px; box-shadow: 0 0 0 5px rgba(255,111,0,0.22); }
+
+    /* ── Right panel ───────────────────────────────────────────── */
+    #controls-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      min-width: 0;
+    }
+    #panel-title {
+      font-family: 'Fredoka One', cursive;
+      font-size: 2.4rem;
+      background: linear-gradient(135deg, #e53935, #7B1FA2);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1;
+    }
+    #player-roster { display: flex; flex-direction: column; gap: 8px; }
+    .roster-chip {
+      display: flex; align-items: center; gap: 10px;
+      background: #fff; border-radius: 12px;
+      padding: 8px 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      font-size: 1rem; font-weight: 700;
+      transition: box-shadow 0.2s;
+    }
+    .roster-chip.active-player {
+      box-shadow: 0 0 0 2px #FF6F00, 0 3px 12px rgba(255,111,0,0.25);
+    }
+    .roster-token {
+      width: 30px; height: 30px; border-radius: 50%;
+      font-size: 10px; font-weight: 800; color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2); flex-shrink: 0;
+    }
+    .roster-pos { color: #bbb; font-weight: 600; font-size: 0.9rem; margin-left: auto; }
+
+    #turn-block {
+      background: #fff;
+      border-radius: 14px;
+      padding: 18px 20px;
+      box-shadow: 0 3px 14px rgba(123,31,162,0.1);
+    }
+    #turn-header {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.6rem; color: #4a148c;
+      margin-bottom: 14px;
+    }
+    #btn-roll {
+      background: linear-gradient(135deg, #e53935, #b71c1c);
+      color: #fff; font-size: 1.2rem;
+      padding: 14px 36px; width: 100%;
+      box-shadow: 0 4px 14px rgba(229,57,53,0.38);
+      border-radius: 10px;
+    }
+    #btn-roll:hover { box-shadow: 0 6px 20px rgba(229,57,53,0.5); }
+    #btn-roll:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    #legend {
+      display: flex; flex-direction: column; gap: 6px;
+      font-size: 0.85rem; font-weight: 700; color: #666;
+    }
+    #legend h3 { font-family: 'Fredoka One', cursive; color: #888; font-size: 1rem; margin-bottom: 2px; }
+    .legend-item { display: flex; align-items: center; gap: 8px; }
+    .legend-dot {
+      width: 16px; height: 16px; border-radius: 4px;
+      border: 1px solid rgba(0,0,0,0.12); flex-shrink: 0;
+    }
+
+    /* ── Action modal (square + card reveals) ───────────────────── */
+    #action-modal {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6);
+      align-items: center; justify-content: center;
+      z-index: 100;
+    }
+    #action-modal.active { display: flex; }
+    #modal-box {
+      border-radius: 20px;
+      padding: 36px 32px;
+      max-width: 400px; width: 92%;
+      text-align: center;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.35);
+      transition: background 0.2s;
+    }
+    #modal-box.type-regular { background: linear-gradient(145deg, #fff9e6, #fff3cd); }
+    #modal-box.type-card-a  { background: linear-gradient(145deg, #fce4ec, #f8bbd0); }
+    #modal-box.type-card-b  { background: linear-gradient(145deg, #f3e5f5, #e1bee7); }
+    #modal-box.type-move    { background: linear-gradient(145deg, #e3f2fd, #bbdefb); }
+
+    #modal-title {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.7rem; margin-bottom: 6px;
+      color: #222;
+    }
+    #modal-player { font-size: 0.95rem; font-weight: 700; color: #888; margin-bottom: 14px; }
+    #modal-text {
+      font-size: 1.25rem; font-weight: 700;
+      line-height: 1.5; color: #333;
+      margin-bottom: 28px;
+    }
+    #btn-modal-continue {
+      background: linear-gradient(135deg, #43a047, #1b5e20);
+      color: #fff; font-size: 1.05rem;
+      padding: 13px 40px;
+      box-shadow: 0 4px 14px rgba(67,160,71,0.35);
+      border-radius: 10px;
+    }
+
+    /* ── Win ───────────────────────────────────────────────────── */
+    #win-section { text-align: center; padding: 80px 20px; }
+    #win-section h2 {
+      font-family: 'Fredoka One', cursive;
+      font-size: 3.5rem; color: #4CAF50; margin-bottom: 12px;
+    }
+    #win-section p { font-size: 1.2rem; color: #888; margin-bottom: 28px; }
+    #win-section button {
+      background: linear-gradient(135deg, #e53935, #7B1FA2);
+      color: #fff; font-size: 1.1rem; padding: 14px 40px;
+      box-shadow: 0 4px 18px rgba(123,31,162,0.35);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Setup -->
+  <section id="setup-section" class="active">
+    <h1>🎉 Tipsy Coco Parté</h1>
+    <p>Qui joue? </p>
+    <ul id="player-list">
+      <li><input type="text" placeholder="Équipe 1" maxlength="20" autocomplete="off"></li>
+      <li><input type="text" placeholder="Équipe 2" maxlength="20" autocomplete="off"></li>
+    </ul>
+    <button id="btn-add-player">+ Autre équipe</button>
+    <button id="btn-start">Que la fête commence! 🎊</button>
+  </section>
+
+  <!-- Game -->
+  <section id="game-section">
+    <div id="board-wrap">
+      <div id="board-grid"></div>
+    </div>
+    <div id="controls-panel">
+      <div id="panel-title">🎉 Tipsy Coco Parté</div>
+
+      <div id="player-roster"></div>
+
+      <div id="turn-block">
+        <div id="turn-header"></div>
+        <button id="btn-roll">🎲 Lancer les Dés</button>
+      </div>
+
+      <div id="legend">
+        <h3>Légende</h3>
+        <div class="legend-item"><div class="legend-dot" style="background:linear-gradient(135deg,#b9f6ca,#69f0ae)"></div>Départ</div>
+        <div class="legend-item"><div class="legend-dot" style="background:linear-gradient(135deg,#fff9c4,#ffd740)"></div>Fin</div>
+        <div class="legend-item"><div class="legend-dot" style="background:linear-gradient(135deg,#fce4ec,#f48fb1)"></div>Carte préfèrerais-tu</div>
+        <div class="legend-item"><div class="legend-dot" style="background:linear-gradient(135deg,#f3e5f5,#ce93d8)"></div>Carte connais-tu Coco</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Win -->
+  <section id="win-section">
+    <h2 id="win-msg"></h2>
+    <p>🏆 Félicitation!</p>
+    <button onclick="location.reload()">Karaoke? 🎉</button>
+  </section>
+
+  <!-- Action modal -->
+  <div id="action-modal">
+    <div id="modal-box">
+      <div id="modal-player"></div>
+      <div id="modal-title"></div>
+      <div id="modal-text"></div>
+      <button id="btn-modal-continue">Ok! ✓</button>
+    </div>
+  </div>
+
+  <script type="module">
+    
+    export const BOARD_DEFINITION = [
+    { spotId: 0,   text: "Départ",                                                                        moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 1,   text: "Shoooteurrr!!!",                                                                moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 2,   text: "Bois si tu bois la même chose que Coco",                                        moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 3,   text: "Les blondinettes boivent",                                                      moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 4,   text: "Le cell le plus déchargé doit boire",                                           moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 5,   text: "La birthday queen boit",                                                        moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 6,   text: "Carte Coco préfèrerait?",                                                       moveId: null,  isCardA: true,  isCardB: false },
+    { spotId: 7,   text: "Prends une selfie avec Coco et mets la en story",                               moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 8,   text: "Les elles boivent",                                                             moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 9,   text: "Finis ton drink",                                                               moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 10,  text: "Carte connais-tu Coco?",                                                        moveId: null,  isCardA: false, isCardB: true  },
+    { spotId: 11,  text: "Si tu as jamais flatter Madamme, bois",                                         moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 12,  text: "Les couples boivent",                                                           moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 13,  text: "La personne qui connait Coco depuis le plus longtemps boit",                    moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 14,  text: "Coco décide d'une personne qui boit",                                           moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 15,  text: "Les yeux bleus boivent",                                                        moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 16,  text: "Text la mère de Coco pour la remercier de l'avoir mise au monde",               moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 17,  text: "Carte Coco préfèrerait?",                                                       moveId: null,  isCardA: true,  isCardB: false },
+    { spotId: 18,  text: "Bois si tu es déjà aller en voyage avec Coco",                                  moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 19,  text: "Fais un compliment à Coco et bois",                                             moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 20,  text: "La personne la plus jeune et toi boivent",                                      moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 21,  text: "Choisis une personne qui boit",                                                 moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 22,  text: "Porte des lunettes fumées",                                                     moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 23,  text: "Coco décide d'un joueur qui fini son verre",                                    moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 24,  text: "Chin-chin tout le monde!",                                                      moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 25,  text: "Porte un vêtement à Coco pour le reste du jeu",                                 moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 26,  text: "Carte Coco préfèrerait?",                                                       moveId: null,  isCardA: true,  isCardB: false },
+    { spotId: 27,  text: "Course de shotguns dans ton équipe",                                            moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 28,  text: "Écrit un DM à la première personne sur ton feed insta",                         moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 29,  text: "Ceux qui ont déjà traversé l'atlantique boivent",                               moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 30,  text: "Carte connais-tu Coco?",                                                        moveId: null,  isCardA: false, isCardB: true  },
+    { spotId: 31,  text: "Si tu es encore sur ton premier drink, finis-le",                               moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 32,  text: "Fume une cigarette (1 puff minimum)",                                           moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 33,  text: "Tout le monde boit",                                                            moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 34,  text: "Shot ou conséquence",                                                           moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 35,  text: "Carte Coco préfèrerait?",                                                       moveId: null,  isCardA: true,  isCardB: false },
+    { spotId: 36,  text: "Les gens qui ont des chats boivent",                                            moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 37,  text: "Les buveurs de vin boivent",                                                    moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 38,  text: "Carte connais-tu Coco?",                                                        moveId: null,  isCardA: false, isCardB: true  },
+    { spotId: 39,  text: "Shooteur avec la fêtée",                                                        moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 40,  text: "La personne la plus vielle et toi boivent",                                     moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 41,  text: "Carte Coco préfèrerait?",                                                       moveId: null,  isCardA: true,  isCardB: false },
+    { spotId: 42,  text: "Envoie une photo d'elle à Coco ou bois",                                        moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 43,  text: "Dernière personne arrivée boit",                                                moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 44,  text: "Écrit un message de bonne fête à Coco sur son mur Facebook",                    moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 45,  text: "Carte connais-tu Coco?",                                                        moveId: null,  isCardA: false, isCardB: true  },
+    { spotId: 46,  text: "Retourne au départ",                                                            moveId: 0,     isCardA: false, isCardB: false },
+    { spotId: 47,  text: "Première personne qui regarde son cell fini son verre",                         moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 48,  text: "Fais boire un shot à quelqun",                                                  moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 49,  text: "Carte Coco préfèrerait?",                                                       moveId: null,  isCardA: true,  isCardB: false },
+    { spotId: 50,  text: "Fais un toast en l'honneur de Coco",                                            moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 51,  text: "La personne la plus grande et la plus petite boivent",                          moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 52,  text: "Coco fait la split!",                                                           moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 53,  text: "Le drink le plus plein bois",                                                   moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 54,  text: "Les gens de Lévis boivent",                                                     moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 55,  text: "Zone de repos",                                                                 moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 56,  text: "Les il/lui boivent",                                                            moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 57,  text: "Embrasse ou gifle",                                                             moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 58,  text: "Carte Coco préfèrerait?",                                                       moveId: null,  isCardA: true,  isCardB: false },
+    { spotId: 59,  text: "Fais un speech de 1min sur un sujet au choix du groupe",                        moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 60,  text: "Carte connais-tu Coco?",                                                        moveId: null,  isCardA: false, isCardB: true  },
+    { spotId: 61,  text: "Bois si tu controles la musique",                                               moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 62,  text: "Shooteur de groupe",                                                            moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 63,  text: "Les célibataires boivent",                                                      moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 64,  text: "Tattoo sur la fesse au sharpie",                                                moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 65,  text: "Les buveurs de bière boivent",                                                  moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 66,  text: "Carte connais-tu Coco?",                                                        moveId: null,  isCardA: false, isCardB: true  },
+    { spotId: 67,  text: "Bois un verre d'eau",                                                           moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 68,  text: "L'organisateur du parté boit (Raph)",                                           moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 69,  text: "Donne un shooteur à la personne la moins saoule",                               moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 70,  text: "Ajoute une règle au jeu",                                                       moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 71,  text: "Carte connais-tu Coco?",                                                        moveId: null,  isCardA: false, isCardB: true  },
+    { spotId: 72,  text: "Tout le monde bois sauf toi",                                                   moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 73,  text: "Chante une chanson à Coco et bois",                                             moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 74,  text: "Vérité conséquence",                                                            moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 75,  text: "Appelle quelqu'un qui a choke le parté",                                        moveId: null,  isCardA: false, isCardB: false },
+    { spotId: 76,  text: "Carte Coco préfèrerait?",                                                       moveId: null,  isCardA: true,  isCardB: false },
+    { spotId: 77,  text: "La Fin!",                                                                       moveId: null,  isCardA: false, isCardB: false },
+    ];
+
+    export const START_POSITION = 0;
+    export const BOARD_SIZE = BOARD_DEFINITION.length;
+    const COLS = 10;
+    const ROWS = Math.ceil(BOARD_SIZE / COLS);
+    const CELL = 96; // px — keep in sync with #board-grid in CSS
+    const getRandomInt = (min, max) => {
+        min = Math.ceil(min);
+        max = Math.floor(max);
+        return Math.floor(Math.random() * (max - min + 1)) + min; // The maximum is inclusive and the minimum is inclusive
+    };
+
+    // ── Card pools ──────────────────────────────────────────────────────────
+    const CARDS_A = [
+      "Se chier dessus à chaque orgasme ou dire le mot en n dans 5% des conversations",
+      "Vivre jusqu'a 94 ans en étant un nain ou 38 ans en personne normale",
+      "Vivre pour toujours à -4 Celsius ou 40 Celsius",
+      "Lire dans les pensées des gens ou voir le futur",
+    ];
+    const CARDS_B = [
+      "Quel joueur du Canadien la fait vibrer",
+      "Quel est le prénom de la mère de Coco",
+      "Quelle est la couleur préférée de Coco",
+      "Si Coco était millionnaire, elle habiterait en…",
+      "La chanson de prédilection de Coco au karaoke",
+      "Quel est le drink préféré de Coco",
+      "Quel age à Coco aujourd'hui",
+      "Quel est le nom du père de Coco",
+      "Quel est le plat préféré de Coco",
+      "Quel est son sport préféré?",
+      "Le pays ou Coco a été au-pair?",
+      "Quelle est l'émission pref de Coco?",
+      "Quel est le nom du frère à Coco?",
+      "Quelle position jouait le père de Coco au hockey?",
+    ];
+
+    const TOKEN_COLORS = [
+      '#e53935','#1976D2','#388E3C','#F57C00',
+      '#7B1FA2','#0097A7','#C2185B','#5D4037','#455A64','#FBC02D',
+    ];
+
+    function shuffle(arr) {
+      const a = [...arr];
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    // ── State ───────────────────────────────────────────────────────────────
+    const state = { players: [], currentIndex: 0, isGameOver: false, deckA: [], deckB: [] };
+    const currentPlayer = () => state.players[state.currentIndex];
+    function nextTurn() { state.currentIndex = (state.currentIndex + 1) % state.players.length; }
+
+    // ── Board ───────────────────────────────────────────────────────────────
+    function gridPos(spotId) {
+      const snakeRow = Math.floor(spotId / COLS);
+      const posInRow = spotId % COLS;
+      return {
+        cssRow: snakeRow + 1,                                        // path runs top → bottom
+        cssCol: (snakeRow % 2 === 0) ? posInRow + 1 : COLS - posInRow,
+      };
+    }
+
+    const cellMap = {};
+
+    function buildBoard() {
+      const grid = document.getElementById('board-grid');
+      grid.innerHTML = '';
+      grid.style.gridTemplateColumns = `repeat(${COLS}, ${CELL}px)`;
+      grid.style.gridTemplateRows = `repeat(${ROWS}, auto)`; // rows grow to fit the longest text
+      BOARD_DEFINITION.forEach(spot => {
+        const { cssRow, cssCol } = gridPos(spot.spotId);
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.spot = spot.spotId;
+        cell.style.gridRow = cssRow;
+        cell.style.gridColumn = cssCol;
+
+        if      (spot.spotId === 0)           cell.classList.add('cell-start');
+        else if (spot.spotId === BOARD_SIZE-1) cell.classList.add('cell-finish');
+        else if (spot.isCardA)                 cell.classList.add('cell-card-a');
+        else if (spot.isCardB)                 cell.classList.add('cell-card-b');
+        else if (spot.moveId !== null)         cell.classList.add('cell-move');
+        else                                   cell.classList.add('cell-normal');
+
+        cell.innerHTML = `
+          <span class="cell-id">${spot.spotId}</span>
+          <span class="cell-text">${spot.text}</span>
+          <div class="cell-tokens"></div>
+        `;
+        grid.appendChild(cell);
+        cellMap[spot.spotId] = cell;
+      });
+    }
+
+    function renderTokens() {
+      Object.values(cellMap).forEach(cell => {
+        cell.querySelector('.cell-tokens').innerHTML = '';
+        cell.classList.remove('cell-active');
+      });
+      state.players.forEach((player, idx) => {
+        const cell = cellMap[player.position];
+        if (!cell) return;
+        const token = document.createElement('span');
+        token.className = 'token';
+        token.style.background = TOKEN_COLORS[idx % TOKEN_COLORS.length];
+        token.title = player.name;
+        token.textContent = player.name.slice(0, 2).toUpperCase();
+        cell.querySelector('.cell-tokens').appendChild(token);
+      });
+      const activeCell = cellMap[currentPlayer().position];
+      if (activeCell) {
+        activeCell.classList.add('cell-active');
+        activeCell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      }
+    }
+
+    function renderRoster() {
+      const roster = document.getElementById('player-roster');
+      roster.innerHTML = '';
+      state.players.forEach((player, idx) => {
+        const chip = document.createElement('div');
+        chip.className = 'roster-chip' + (idx === state.currentIndex ? ' active-player' : '');
+        chip.innerHTML = `
+          <div class="roster-token" style="background:${TOKEN_COLORS[idx % TOKEN_COLORS.length]}">${player.name.slice(0,2).toUpperCase()}</div>
+          <span>${player.name}</span>
+          <span class="roster-pos">#${player.position}</span>
+        `;
+        roster.appendChild(chip);
+      });
+    }
+
+    function updateGameUI() {
+      document.getElementById('turn-header').textContent = `Au tour de ${currentPlayer().name}`;
+      renderTokens();
+      renderRoster();
+    }
+
+    // ── Modal ───────────────────────────────────────────────────────────────
+    function showModal({ type, title, text, playerName }) {
+      const box = document.getElementById('modal-box');
+      box.className = `type-${type}`;
+      document.getElementById('modal-player').textContent = playerName;
+      document.getElementById('modal-title').textContent = title;
+      document.getElementById('modal-text').textContent = text;
+      document.getElementById('action-modal').classList.add('active');
+      document.getElementById('btn-roll').disabled = true;
+    }
+
+    document.getElementById('btn-modal-continue').addEventListener('click', () => {
+      document.getElementById('action-modal').classList.remove('active');
+      document.getElementById('btn-roll').disabled = false;
+      nextTurn();
+      updateGameUI();
+    });
+
+    // ── Setup ───────────────────────────────────────────────────────────────
+    document.getElementById('btn-add-player').addEventListener('click', () => {
+      const li = document.createElement('li');
+      li.innerHTML = `<input type="text" placeholder="Nom du joueur" maxlength="20" autocomplete="off">`;
+      document.getElementById('player-list').appendChild(li);
+    });
+
+    document.getElementById('btn-start').addEventListener('click', () => {
+      const inputs = [...document.querySelectorAll('#player-list input')];
+      const names = inputs.map(i => i.value.trim()).filter(Boolean);
+      if (names.length < 2) { alert('Ajoute au moins 2 joueurs.'); return; }
+      state.players = names.map((name, idx) => ({ id: idx, name, position: START_POSITION }));
+      state.deckA = shuffle(CARDS_A);
+      state.deckB = shuffle(CARDS_B);
+      state.currentIndex = 0;
+      document.querySelectorAll('section').forEach(s => s.classList.remove('active'));
+      document.getElementById('game-section').classList.add('active');
+      buildBoard();
+      updateGameUI();
+    });
+
+    // ── Roll ────────────────────────────────────────────────────────────────
+    document.getElementById('btn-roll').addEventListener('click', () => {
+      if (state.isGameOver) return;
+
+      const roll = getRandomInt(1, 8);
+      const player = currentPlayer();
+      let newPos = Math.min(player.position + roll, BOARD_SIZE - 1);
+      player.position = newPos;
+      const spot = BOARD_DEFINITION[newPos];
+
+      // Handle teleport
+      if (spot.moveId !== null) {
+        player.position = spot.moveId;
+        updateGameUI();
+        showModal({
+          type: 'move',
+          title: spot.text,
+          text: `Tu as fait un ${roll} et tu te téléportes à la case #${spot.moveId} : « ${BOARD_DEFINITION[spot.moveId].text} »`,
+          playerName: `${player.name} · a fait ${roll}`,
+        });
+        return;
+      }
+
+      // Win
+      if (player.position >= BOARD_SIZE - 1) {
+        state.isGameOver = true;
+        renderTokens();
+        document.getElementById('win-msg').textContent = `🏆 ${player.name} gagne!`;
+        document.querySelectorAll('section').forEach(s => s.classList.remove('active'));
+        document.getElementById('win-section').classList.add('active');
+        return;
+      }
+
+      updateGameUI();
+
+      // Card A
+      if (spot.isCardA) {
+        if (state.deckA.length === 0) state.deckA = shuffle(CARDS_A);
+        showModal({
+          type: 'card-a',
+          title: '🤔 Coco préfèrerait?',
+          text: state.deckA.pop(),
+          playerName: `${player.name} · a fait ${roll} · case #${newPos}`,
+        });
+        return;
+      }
+
+      // Card B
+      if (spot.isCardB) {
+        if (state.deckB.length === 0) state.deckB = shuffle(CARDS_B);
+        showModal({
+          type: 'card-b',
+          title: '💋 Connais-tu Coco?',
+          text: state.deckB.pop(),
+          playerName: `${player.name} · a fait ${roll} · case #${newPos}`,
+        });
+        return;
+      }
+
+      // Regular square
+      showModal({
+        type: 'regular',
+        title: spot.text,
+        text: '',
+        playerName: `${player.name} · a fait ${roll} · case #${newPos}`,
+      });
+    });
+  </script>
+</body>
+</html>
